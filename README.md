@@ -13,6 +13,7 @@ read and process chunked data from http stream
 example file conf.yaml
 	 
     url: http://127.0.0.1/stream
+    period: 5 # in seconds
      
 # installation
 
