@@ -14,4 +14,8 @@ example file conf.yaml
 	 
     url: http://127.0.0.1/stream
      
+# installation
 
+	go build .
+    # or
+    go build -o chunked main.go
