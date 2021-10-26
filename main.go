@@ -19,21 +19,25 @@ type Data struct {
 }
 
 const (
-	TIME = time.Second * 5
 	FILENAME = "conf.yaml"
 )
 
 
 type Config struct {
 	Url string `yaml:url`
+	Period time.Duration `yaml:period`
 }
 
 var Counter int32
 var Sum float64
 
+var CounterSlid int32
+var SumSlid float64
 
-func timer(ctx context.Context) {
-	ticker := time.Tick(TIME)
+
+func timer(ctx context.Context, t time.Duration) {
+	
+	ticker := time.Tick(t)
 
 	for {
 		select {
@@ -42,8 +46,10 @@ func timer(ctx context.Context) {
 				return 
 
 			case   <- ticker:
-				fmt.Println("***** every 5 sec")
-				fmt.Printf("result: %0.8f\n---------------------\n", Sum / float64(Counter))
+				fmt.Printf("***** every %d sec  ***\n", t / time.Second)
+				fmt.Printf("result: %0.8f sliding %0.8f\n---------------------\n", Sum / float64(Counter), SumSlid / float64(CounterSlid)  )
+				SumSlid = 0
+				CounterSlid = 0
 
 		}
 	}
@@ -59,7 +65,9 @@ func worker (ctx context.Context, 	in chan float64) {
 			case  num := <- in:
 				Sum += num
 				Counter ++
-				fmt.Printf("get: %0.8f number:%d result: %f\n", num, Counter, Sum / float64(Counter))
+				SumSlid += num
+				CounterSlid++
+				fmt.Printf("get: %0.8f number:%d result: %f/ sliding: %f\n", num, Counter, Sum / float64(Counter), SumSlid / float64(CounterSlid) )
 		}
 	}
 
@@ -78,7 +86,7 @@ func onSignal(ctx context.Context, cancel func(), finish chan struct{}) {
 	var nl struct{}
 	select {
 		case <- sigChan:
-			fmt.Printf("==================\n finish result: %f\n", Sum / float64(Counter))
+			fmt.Printf("==================\n finish result: %f\nsliding %f\n", Sum / float64(Counter), SumSlid / float64(CounterSlid))
 			cancel()
 			finish <- nl
 		case <- ctx.Done():
@@ -87,24 +95,26 @@ func onSignal(ctx context.Context, cancel func(), finish chan struct{}) {
 }
 
 
-func downloader(ctx context.Context, cn chan float64, cancel func()) {
-	var data Data
+
+func getConfig() (Config, error) {
 	var conf Config
 
 
 	yaml_buf, err := readFile()
 	if err != nil {
 		fmt.Println("read file error:", err)
-		cancel()
-		return
+		return Config{},err
 	}
 	err = yaml.Unmarshal(yaml_buf, &conf)
 	if err != nil {
-		cancel()
 		fmt.Println("parse config file:", err)
-		return
+		return Config{},err
 	}
+	return conf,nil
+}
 
+func downloader(ctx context.Context, cn chan float64, cancel func(), url string) {
+	var data Data
 
 	tr := &http.Transport{
 		MaxIdleConns:       	10,
@@ -117,7 +127,7 @@ func downloader(ctx context.Context, cn chan float64, cancel func()) {
 		Transport: tr, 
 	}
 
-	res, err := client.Get(conf.Url)
+	res, err := client.Get(url)
 	if err != nil {
 		ctx.Done()
 		return
@@ -175,6 +185,12 @@ func readFile() ([]byte, error) {
 
 func main() {
 
+	cfg,err := getConfig()
+	if err != nil {
+		return
+	}
+	cfg.Period = cfg.Period * time.Second
+
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -183,9 +199,9 @@ func main() {
 
 
 	go onSignal(ctx, cancel, finishCn)
-	go timer(ctx)
+	go timer(ctx, cfg.Period)
 	go worker(ctx, cn_data)
-	go downloader(ctx, cn_data, cancel)
+	go downloader(ctx, cn_data, cancel, cfg.Url)
 
 	<- finishCn
 	fmt.Println("Finish gracefull")
