@@ -14,7 +14,7 @@ example file conf.yaml
 	 
     url: http://127.0.0.1/stream
     period: 5 # in seconds
-     
+    window: 3 # the window of calculate moving agregate 
 # installation
 
 	go build .

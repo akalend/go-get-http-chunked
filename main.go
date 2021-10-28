@@ -12,6 +12,8 @@ import (
 	"os/signal"
 	"syscall"
 	"gopkg.in/yaml.v2"
+
+	"github.com/RobinUS2/golang-moving-average"
 )
 
 type Data struct {
@@ -24,15 +26,15 @@ const (
 
 
 type Config struct {
-	Url string `yaml:url`
-	Period time.Duration `yaml:period`
+	Url string 				`yaml:url`
+	Period time.Duration 	`yaml:period`
+	Window int 				`yaml:window`
 }
 
 var Counter int32
 var Sum float64
 
-var CounterSlid int32
-var SumSlid float64
+var Ma *movingaverage.MovingAverage
 
 
 func timer(ctx context.Context, t time.Duration) {
@@ -47,10 +49,8 @@ func timer(ctx context.Context, t time.Duration) {
 
 			case   <- ticker:
 				fmt.Printf("***** every %d sec  ***\n", t / time.Second)
-				fmt.Printf("result: %0.8f sliding %0.8f\n---------------------\n", Sum / float64(Counter), SumSlid / float64(CounterSlid)  )
-				SumSlid = 0
-				CounterSlid = 0
-
+				fmt.Printf("result: %0.8f mov.agr %0.8f\n---------------------\n",
+				 Sum / float64(Counter), Ma.Avg())
 		}
 	}
 }
@@ -65,9 +65,8 @@ func worker (ctx context.Context, 	in chan float64) {
 			case  num := <- in:
 				Sum += num
 				Counter ++
-				SumSlid += num
-				CounterSlid++
-				fmt.Printf("get: %0.8f number:%d result: %f/ sliding: %f\n", num, Counter, Sum / float64(Counter), SumSlid / float64(CounterSlid) )
+				Ma.Add(num)
+				fmt.Printf("get: %0.8f number:%d result: %f\n", num, Counter, Sum / float64(Counter) )
 		}
 	}
 
@@ -86,7 +85,8 @@ func onSignal(ctx context.Context, cancel func(), finish chan struct{}) {
 	var nl struct{}
 	select {
 		case <- sigChan:
-			fmt.Printf("==================\n finish result: %f\nsliding %f\n", Sum / float64(Counter), SumSlid / float64(CounterSlid))
+			fmt.Printf("==================\n finish result: %f, mov.agr %f\n", 
+					Sum / float64(Counter), Ma.Avg())
 			cancel()
 			finish <- nl
 		case <- ctx.Done():
@@ -189,6 +189,9 @@ func main() {
 	if err != nil {
 		return
 	}
+
+
+	Ma = movingaverage.New(cfg.Window)
 	cfg.Period = cfg.Period * time.Second
 
 	ctx := context.Background()
