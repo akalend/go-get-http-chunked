@@ -73,7 +73,7 @@ func worker (ctx context.Context, 	in chan float64) {
 				res := Sum / float64(Counter)
 				Mx.Unlock()
 				Ma.Add(num)
-				fmt.Printf("get: %0.8f number:%d result: %f\n", num, Counter, res )
+				fmt.Printf("get: %0.8f number:%d result: %f, mov.agr %f\n", num, Counter, res, Ma.Avg() )
 		}
 	}
 
