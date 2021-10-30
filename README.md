@@ -19,4 +19,4 @@ example file conf.yaml
 
 	go build .
     # or
-    go build -o chunked main.go
+    go build -o chunked main.go         

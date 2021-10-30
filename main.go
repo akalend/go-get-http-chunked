@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sync"
 	"os/signal"
 	"syscall"
 	"gopkg.in/yaml.v2"
@@ -31,6 +32,7 @@ type Config struct {
 	Window int 				`yaml:window`
 }
 
+var Mx sync.Mutex
 var Counter int32
 var Sum float64
 
@@ -49,8 +51,10 @@ func timer(ctx context.Context, t time.Duration) {
 
 			case   <- ticker:
 				fmt.Printf("***** every %d sec  ***\n", t / time.Second)
-				fmt.Printf("result: %0.8f mov.agr %0.8f\n---------------------\n",
-				 Sum / float64(Counter), Ma.Avg())
+				Mx.Lock()
+				rs := Sum / float64(Counter)
+				Mx.Unlock()
+				fmt.Printf("result: %0.8f mov.agr %0.8f\n---------------------\n",rs, Ma.Avg())
 		}
 	}
 }
@@ -63,10 +67,13 @@ func worker (ctx context.Context, 	in chan float64) {
 				fmt.Println("worker Done", ctx.Err())
 				return 
 			case  num := <- in:
+				Mx.Lock()
 				Sum += num
 				Counter ++
+				res := Sum / float64(Counter)
+				Mx.Unlock()
 				Ma.Add(num)
-				fmt.Printf("get: %0.8f number:%d result: %f\n", num, Counter, Sum / float64(Counter) )
+				fmt.Printf("get: %0.8f number:%d result: %f\n", num, Counter, res )
 		}
 	}
 
@@ -85,8 +92,10 @@ func onSignal(ctx context.Context, cancel func(), finish chan struct{}) {
 	var nl struct{}
 	select {
 		case <- sigChan:
-			fmt.Printf("==================\n finish result: %f, mov.agr %f\n", 
-					Sum / float64(Counter), Ma.Avg())
+			Mx.Lock()
+			rs := Sum / float64(Counter)
+			Mx.Unlock()
+			fmt.Printf("==================\n finish result: %f, mov.agr %f\n", rs, Ma.Avg()) 
 			cancel()
 			finish <- nl
 		case <- ctx.Done():
